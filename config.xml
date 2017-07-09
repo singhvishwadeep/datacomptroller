@@ -1,0 +1,95 @@
+#<datacomptroller>
+#	<log>
+#		<tag>warning</tag>
+#		<port>8888</port>
+#		<input>
+#			<filter></filter>
+#			<nofilter></nofilter>
+#		</input>
+#		<output>
+#			<mode>
+#				<name></name>
+#				<path></path>
+#			</mode>
+#			<mode>
+#				<hostname></hostname>
+#				<port></port>
+#			</mode>
+#		</output>
+#	</log>
+#	<log>
+#		<tag>error</tag>
+#		<port>8888</port>
+#		<input>
+#			<filter></filter>
+#			<nofilter></nofilter>
+#		</input>
+#		<output>
+#			<mode>
+#				<name></name>
+#				<path></path>
+#			</mode>
+#			<mode>
+#				<hostname></hostname>
+#				<port></port>
+#			</mode>
+#		</output>
+#	</log>
+#</datacomptroller>
+
+log
+tag:warning
+port:1234
+filter:
+nofilter:
+output:file.txt localhost,1234
+rotation:yes
+instant:yes
+
+log
+tag:warning
+port:1234
+filter:
+nofilter:
+output:
+rotation:yes
+instant:yes
+
+
+
+log
+tag:
+port:1234
+filter:
+nofilter:
+output:file.txt localhost,1234
+rotation:yes
+instant:yes
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
