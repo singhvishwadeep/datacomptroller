@@ -223,6 +223,10 @@ public:
 				continue
 			}
 			// insert into message vector
+			if (string(buffer) == "exit") {
+				cout << "exitting the current link =" << buffer << endl;
+				break;
+			}
 			log.mu_for_message.lock();
 			cout << "pushing the message in incoming_messages" << endl;
 			incoming_messages.push_back(string(buffer));
