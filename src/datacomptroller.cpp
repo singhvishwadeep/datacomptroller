@@ -15,8 +15,16 @@
 #include <map>
 #include <cstdlib>
 #include <regex>
+#include <signal.h>
 
 using namespace std;
+vector <logger *> allloggers;
+
+void signal_handle () {
+	for (auto it = allloggers.begin(); it != allloggers.end(); it++ ) {
+		delete it;
+	}
+}
 
 int main(int argc, char **argv) {
 	vector <map<string,string>> action;
@@ -26,7 +34,13 @@ int main(int argc, char **argv) {
 	if (validateRecord(action)) {
 		return 1;
 	}
-	vector <logger> alllooggers;
+	struct sigaction sigIntHandler;
+
+	sigIntHandler.sa_handler = signal_handle;
+	sigemptyset(&sigIntHandler.sa_mask);
+	sigIntHandler.sa_flags = 0;
+
+	sigaction(SIGINT, &sigIntHandler, NULL);
 	for (auto it = action.begin(); it != action.end(); it++ ) {
 		map<string,string> tempm(it->begin(),it->end());
 		int port = atoi(tempm["port"].c_str());
@@ -68,8 +82,9 @@ int main(int argc, char **argv) {
 		for(auto it1=it->begin();it1!=it->end();++it1){
 			cout << "Working on Config file - " << it1->first  << " - " << it1->second << endl;
 		}
-		alllooggers.push_back(logger(tempm["tag"], port, rotation, tempm["filter"], tempm["nofilter"], outmode, outnames, outports));
+		allloggers.push_back(new logger(tempm["tag"], port, rotation, tempm["filter"], tempm["nofilter"], outmode, outnames, outports));
 	}
-
+	cout << "all running" << endl;
+	pause();
 	return 0;
 }
