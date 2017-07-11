@@ -58,9 +58,10 @@ public:
 		kill1 = kill2 = kill3 = kill4 = kill5 = 0;
 		// create listen handle
 		cout << "opening reading socket..." << endl;
-		createsocketlistener();
+		createsocketlistener(); //  this will create a socket handle, which is ready to listen
 		cout << "opening writing handles..." << endl;
-		openwritehandles();
+		openwritehandles(); // this will open write handles to output the incoming messages, handle vector will be populated
+
 		cout << "creating listener_function_parent thread..." << endl;
 		listener = thread(listener_function_parent, ref(*this));
 		cout << "creating collector_function thread..." << endl;
@@ -85,49 +86,81 @@ public:
 		killer.join();
 	}
 
-	void createsocketlistener () {
-		// listening for incoming messages
-		struct sockaddr_in serv_addr;
-		listenhandle = socket(AF_INET, SOCK_STREAM, 0);
-		// creating a socket for sever
-		if (listenhandle < 0) {
-			cerr << "ERROR opening socket";
-			exit(1);
+
+
+	static void rotator_function (logger &log) {
+		while (1) {
+			if (log.kill4 == 1) {
+				cout << "killing rotator_function thread" << endl;
+				break;
+			}
+			cout << "rotator_function thread running.." << endl;
+			this_thread::sleep_for(std::chrono::seconds(2));
 		}
-		bzero((char *) &serv_addr, sizeof(serv_addr));
-		serv_addr.sin_family = AF_INET;
-		serv_addr.sin_addr.s_addr = INADDR_ANY;
-		serv_addr.sin_port = htons(port);
-		/* Now bind the host address using bind() call.*/
-		if (bind(listenhandle, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) < 0) {
-			perror("ERROR on binding");
-			exit(1);
-		}
-		struct timeval tv;
-		tv.tv_sec = LISTEN_TIMEOUT;  // in seconds
-		tv.tv_usec = 0;
-		// setting the time out of recv call
-		setsockopt(listenhandle, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv,sizeof(struct timeval));
-		listen(listenhandle,MAX_LISTEN);
-		cout << "socket listener created properly" << endl;
-		return;
+		log.kill4 = 1;
+		cout << "ending the rotator_function thread" << endl;
 	}
 
-	void openwritehandles () {
-		int i = 0;
-		for (auto it = outmode.begin(); it != outmode.end(); it++) {
-			if (*it == 0) {
-				// file mode
-				ofstream myfile;
-				myfile.open(outnames[i]);
-				writehandle.push_back(move(myfile));
-			} else {
-				// socket mode
-				// :TODO
+	static void killer_function (logger &log) {
+		while (1) {
+			if (log.kill4 == 1) {
+				cout << "killing rotator_function thread" << endl;
+				break;
 			}
-			i++;
+			cout << "killer_function thread running.." << endl;
+			this_thread::sleep_for(std::chrono::seconds(2));
 		}
-		cout << "write handles are opened properly" << endl;
+		for (auto it1 = log.writehandle.begin(); it1 != log.writehandle.end(); it1++) {
+			it1->close();
+		}
+		// close socket writing
+		log.kill5 = 1;
+		cout << "ending the killer_function thread" << endl;
+
+	}
+
+	static void writer_function (logger &log) {
+		while (1) {
+			if (log.kill3 == 1) {
+				cout << "killing collector thread" << endl;
+				break;
+			}
+			log.mu_for_message.lock();
+			// write everything to output
+			if (!log.writing_messages.empty()) {
+				for (auto it = log.writing_messages.begin(); it != log.writing_messages.end(); it++) {
+					for (auto it1 = log.writehandle.begin(); it1 != log.writehandle.end(); it1++) {
+						*it1 << *it << endl;
+					}
+				}
+				log.writing_messages.clear();
+			}
+			log.mu_for_message.unlock();
+		}
+		log.kill4 = 1;
+		cout << "ending the writer_function thread" << endl;
+	}
+
+
+	static void collector_function (logger &log) {
+		while (1) {
+			if (log.kill2 == 1) {
+				cout << "killing collector thread" << endl;
+				break;
+			}
+			cout << "collector_function thread running" << endl;
+			this_thread::sleep_for(std::chrono::seconds(1));
+			log.mu_for_message.lock();
+			// move everything to writing_messages
+			if (!log.incoming_messages.empty()) {
+				cout << "inserting the messages inside writing_messages from incoming_messages" << endl;
+				log.writing_messages.insert(log.writing_messages.end(), log.incoming_messages.begin(), log.incoming_messages.end());
+				log.incoming_messages.clear();
+			}
+			log.mu_for_message.unlock();
+		}
+		log.kill3 = 1;
+		cout << "ending the collector_function thread" << endl;
 	}
 
 	static int accept_client(int s, int timeout) {
@@ -192,12 +225,12 @@ public:
 				break;
 			}
 			/* Create child thread */
-//			thread t1 = thread(listener_function, ref(log), newsockfd);
-			allth.emplace_back(&listener_function, std::ref(log), newsockfd);
-//			allth.push_back(move(t1));
+			thread t1 = thread(listener_function, ref(log), newsockfd);
+//			allth.emplace_back(&listener_function, std::ref(log), newsockfd);
+			allth.push_back(move(t1));
 		}
-		for (auto& it = allth.begin(); it != allth.end(); it++) {
-			it.join();
+		for (auto it = allth.begin(); it != allth.end(); it++) {
+			it->join();
 		}
 	}
 
@@ -238,79 +271,52 @@ public:
 		cout << "ending the listener_function thread" << endl;
 	}
 
-	static void collector_function (logger &log) {
-		while (1) {
-			if (log.kill2 == 1) {
-				cout << "killing collector thread" << endl;
-				break;
+	void openwritehandles () {
+		int i = 0;
+		for (auto it = outmode.begin(); it != outmode.end(); it++) {
+			if (*it == 0) {
+				// file mode
+				ofstream myfile;
+				myfile.open(outnames[i]);
+				writehandle.push_back(move(myfile));
+			} else {
+				// socket mode
+				// :TODO
 			}
-			cout << "collector_function thread running" << endl;
-			this_thread::sleep_for(std::chrono::seconds(1));
-			log.mu_for_message.lock();
-			// move everything to writing_messages
-			if (!log.incoming_messages.empty()) {
-				cout << "inserting the messages inside writing_messages from incoming_messages" << endl;
-				log.writing_messages.insert(log.writing_messages.end(), log.incoming_messages.begin(), log.incoming_messages.end());
-				log.incoming_messages.clear();
-			}
-			log.mu_for_message.unlock();
+			i++;
 		}
-		log.kill3 = 1;
-		cout << "ending the collector_function thread" << endl;
+		cout << "write handles are opened properly" << endl;
 	}
 
-	static void writer_function (logger &log) {
-		while (1) {
-			if (log.kill3 == 1) {
-				cout << "killing collector thread" << endl;
-				break;
-			}
-			log.mu_for_message.lock();
-			// write everything to output
-			if (!log.writing_messages.empty()) {
-				for (auto& it = log.writing_messages.begin(); it != log.writing_messages.end(); it++) {
-					for (auto it1 = log.writehandle.begin(); it1 != log.writehandle.end(); it1++) {
-						it << it1 << endl;
-					}
-				}
-				log.writing_messages.clear();
-			}
-			log.mu_for_message.unlock();
+	void createsocketlistener () {
+		// listening for incoming messages
+		struct sockaddr_in serv_addr;
+		listenhandle = socket(AF_INET, SOCK_STREAM, 0);
+		// creating a socket for sever
+		if (listenhandle < 0) {
+			cerr << "ERROR opening socket";
+			exit(1);
 		}
-		log.kill4 = 1;
-		cout << "ending the writer_function thread" << endl;
+		bzero((char *) &serv_addr, sizeof(serv_addr));
+		serv_addr.sin_family = AF_INET;
+		serv_addr.sin_addr.s_addr = INADDR_ANY;
+		serv_addr.sin_port = htons(port);
+		/* Now bind the host address using bind() call.*/
+		if (bind(listenhandle, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) < 0) {
+			perror("ERROR on binding");
+			exit(1);
+		}
+		struct timeval tv;
+		tv.tv_sec = LISTEN_TIMEOUT;  // in seconds
+		tv.tv_usec = 0;
+		// setting the time out of recv call
+		setsockopt(listenhandle, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv,sizeof(struct timeval));
+		listen(listenhandle,MAX_LISTEN);
+		cout << "socket listener created properly" << endl;
+		return;
 	}
 
-	static void rotator_function (logger &log) {
-		while (1) {
-			if (log.kill4 == 1) {
-				cout << "killing rotator_function thread" << endl;
-				break;
-			}
-			cout << "rotator_function thread running.." << endl;
-			this_thread::sleep_for(std::chrono::seconds(2));
-		}
-		log.kill4 = 1;
-		cout << "ending the rotator_function thread" << endl;
-	}
 
-	static void killer_function (logger &log) {
-		while (1) {
-			if (log.kill4 == 1) {
-				cout << "killing rotator_function thread" << endl;
-				break;
-			}
-			cout << "killer_function thread running.." << endl;
-			this_thread::sleep_for(std::chrono::seconds(2));
-		}
-		for (auto it1 = log.writehandle.begin(); it1 != log.writehandle.end(); it1++) {
-			it1.close();
-		}
-		// close socket writing
-		log.kill5 = 1;
-		cout << "ending the killer_function thread" << endl;
-
-	}
 
 
 	int getPort () {
